@@ -1,0 +1,3 @@
+python run_vlm_direct_prediction.py --dataset_name finance_SP --prediction_model gemini-2.5-flash > run_vlm_direct_finance_gemini-2.5-flash.log 2>&1
+python run_vlm_direct_prediction.py --dataset_name power --prediction_model gemini-2.5-flash > run_vlm_direct_power_gemini-2.5-flash.log 2>&1
+python run_vlm_direct_prediction.py --dataset_name traffic --prediction_model gemini-2.5-flash > run_vlm_direct_traffic_gemini-2.5-flash.log 2>&1
