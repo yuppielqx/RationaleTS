@@ -53,14 +53,8 @@ dataset/*
 # --- RAG Results ---
 rag_results/
 
-# --- Vector DB: exclude all except traffic gemini2.5 (under 100MB) ---
-vector_db/*
-!vector_db/traffic/
-!vector_db/traffic/gemini2.5_vector_db.pkl
-# Exclude >100MB files (rebuild via build_vector_db.py):
-vector_db/traffic/vector_db.pkl
-vector_db/traffic/gpt4o_vector_db.pkl
-vector_db/traffic/qwen3_vector_db.pkl
+# --- Vector DB ---
+vector_db/
 
 # Environment
 .env
