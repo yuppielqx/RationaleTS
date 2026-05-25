@@ -41,14 +41,8 @@ process2image/
 *.npz
 *.pdf
 
-# --- Datasets: exclude all except traffic ---
-dataset/*
-!dataset/traffic/
-!dataset/traffic/*.pkl
-!dataset/traffic/*.csv
-!dataset/traffic/*.ipynb
-!dataset/traffic/*.pdf
-!dataset/traffic/images/
+# --- Datasets ---
+dataset/
 
 # --- RAG Results ---
 rag_results/
