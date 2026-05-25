@@ -50,10 +50,8 @@ dataset/*
 !dataset/traffic/*.pdf
 !dataset/traffic/images/
 
-# --- RAG Results: exclude all except traffic ---
-rag_results/*
-!rag_results/traffic/
-!rag_results/traffic/*.csv
+# --- RAG Results ---
+rag_results/
 
 # --- Vector DB: exclude all except traffic gemini2.5 (under 100MB) ---
 vector_db/*
