@@ -21,10 +21,6 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# Large data files (GitHub has 100MB file limit)
-*.npy
-*.npz
-
 # Logs
 *.log
 nohup.out
@@ -32,23 +28,41 @@ nohup.out
 # Model files
 bert-base-cased/
 
-# Output
+# Other output
 expl_results/
-rag_results/
-vector_db/
 process2image/
-
-# CSV data
-*.csv
-
-# PDFs
-*.pdf
 
 # R
 .Rhistory
 
-# Datasets (large files)
-dataset/
+# --- Blanket file type excludes ---
+*.csv
+*.npy
+*.npz
+*.pdf
+
+# --- Datasets: exclude all except traffic ---
+dataset/*
+!dataset/traffic/
+!dataset/traffic/*.pkl
+!dataset/traffic/*.csv
+!dataset/traffic/*.ipynb
+!dataset/traffic/*.pdf
+!dataset/traffic/images/
+
+# --- RAG Results: exclude all except traffic ---
+rag_results/*
+!rag_results/traffic/
+!rag_results/traffic/*.csv
+
+# --- Vector DB: exclude all except traffic gemini2.5 (under 100MB) ---
+vector_db/*
+!vector_db/traffic/
+!vector_db/traffic/gemini2.5_vector_db.pkl
+# Exclude >100MB files (rebuild via build_vector_db.py):
+vector_db/traffic/vector_db.pkl
+vector_db/traffic/gpt4o_vector_db.pkl
+vector_db/traffic/qwen3_vector_db.pkl
 
 # Environment
 .env
