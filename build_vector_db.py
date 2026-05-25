@@ -12,10 +12,10 @@ import warnings
 from agents import EvaluatorAgent
 from utils import EmbeddingHandler
 
-# --- 配置日志 ---
+# --- Logging configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- 所有数据集的标签含义 ---
+# --- Label meanings for all datasets ---
 ALL_LABEL_MEANINGS = {
     "finance_SP": {
         0: "decrease by more than 1%",
@@ -26,12 +26,12 @@ ALL_LABEL_MEANINGS = {
         0: "no heavy pollution: PM2.5 <75",
         1: "heavy pollution level: PM2.5 >=75"
     },
-    # --- 新增 power 数据集的标签含义 ---
+    # --- Power dataset label meanings ---
     "power": {
         0: "Avg. power will not be higher",
         1: "Avg. power will be higher"
     },
-    # --- 新增 traffic 数据集的标签含义 ---
+    # --- Traffic dataset label meanings ---
     "traffic": {
         0: "Occupancy decreases by >2",
         1: "Occupancy changes within [-2, 2]",
@@ -41,8 +41,8 @@ ALL_LABEL_MEANINGS = {
 
 def process_sample(doc_index, image_id, all_labels, evaluator_agent, LABEL_MEANINGS, IMAGE_DIR):
     """
-    处理单个样本：为给定的图像ID生成黄金标准的推理路径。
-    这是一个独立的工作函数，以便于并行处理。
+    Process a single sample: generate a gold-standard reasoning path for the given image ID.
+    This is a standalone worker function for parallel processing.
     """
     image_path = os.path.join(IMAGE_DIR, f"{image_id}.png")
     if not os.path.exists(image_path):
@@ -52,7 +52,7 @@ def process_sample(doc_index, image_id, all_labels, evaluator_agent, LABEL_MEANI
     true_label = all_labels[image_id]
     true_label_meaning = LABEL_MEANINGS.get(true_label, "Unknown")
 
-    # a. 生成黄金标准推理路径
+    # a. Generate gold-standard reasoning path
     logging.info(f"Generating reasoning for image_id: {image_id} (True Label: {true_label_meaning})")
     reasoning_path = evaluator_agent.execute(
         true_label=true_label,
@@ -62,7 +62,7 @@ def process_sample(doc_index, image_id, all_labels, evaluator_agent, LABEL_MEANI
         reasoning=""
     )
 
-    # 返回包含所有必要信息的结果，以便后续排序和处理
+    # Return results with all necessary information for subsequent sorting and processing
     return {
         "doc_index": doc_index,
         "image_id": image_id,
@@ -72,9 +72,9 @@ def process_sample(doc_index, image_id, all_labels, evaluator_agent, LABEL_MEANI
 
 def main(args):
     """
-    主函数，用于生成、向量化并存储金融预测的黄金标准推理路径。
+    Main function to generate, vectorize, and store gold-standard reasoning paths.
     """
-    # --- 1. 根据参数动态设置配置 ---
+    # --- 1. Configure settings dynamically from arguments ---
     DATASET_NAME = args.dataset_name
     IMAGE_DIR = f"dataset/{DATASET_NAME}/images"
     LABELS_PATH = f"dataset/{DATASET_NAME}/labels.pkl"
@@ -85,26 +85,26 @@ def main(args):
         logging.error(f"Dataset '{DATASET_NAME}' is not configured in ALL_LABEL_MEANINGS.")
         return
 
-    # --- 1. 创建输出目录 ---
+    # --- 1. Create output directory ---
     os.makedirs(DB_OUTPUT_DIR, exist_ok=True)
 
-    # --- 2. 加载数据和划分训练集 ---
+    # --- 2. Load data and split into training set ---
     logging.info("Loading data and splitting into training set...")
     with open(LABELS_PATH, 'rb') as f:
         all_labels = pickle.load(f)
 
-    # 将前80%作为训练数据
+    # Use the first train_split fraction as training data
     train_size = int(len(all_labels) * args.train_split)
     logging.info(f"Total samples: {len(all_labels)}, Training samples: {train_size}")
 
-    # --- 3. 初始化Agent和Embedding处理器 ---
+    # --- 3. Initialize agents and embedding handler ---
     evaluator_agent = EvaluatorAgent(model_name=args.evaluator_model, dataset_name=DATASET_NAME)
     embedding_handler = EmbeddingHandler(model_name=args.embedding_model)
 
-    # --- 4. 并行生成推理路径 ---
+    # --- 4. Generate reasoning paths in parallel ---
     temp_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as executor:
-        # 创建一个future到文档索引的映射
+        # Create a mapping from future to document index
         future_to_doc = {
             executor.submit(process_sample, i, i, all_labels, evaluator_agent, LABEL_MEANINGS, IMAGE_DIR): i
             for i in range(train_size)
@@ -119,8 +119,8 @@ def main(args):
                 doc_index = future_to_doc[future]
                 logging.error(f"Document index {doc_index} generated an exception: {exc}")
 
-    # --- 5. 结果排序并准备向量化 ---
-    # 确保结果与 train_indices 的原始顺序一致
+    # --- 5. Sort results and prepare for vectorization ---
+    # Ensure results follow the original order of train_indices
     temp_results.sort(key=lambda x: x['doc_index'])
 
     reasoning_data_df = pd.DataFrame(temp_results)
@@ -136,19 +136,19 @@ def main(args):
         for _ in chunks:
             chunk_to_doc_id_map.append(i)
 
-    # 移除临时的 doc_index 列
+    # Remove temporary doc_index column
     metadata_df = reasoning_data_df.drop(columns=['doc_index'])
-    # 将 image_id 重命名为 id 以匹配 RAG 代理的期望
+    # Rename image_id to id to match RAG agent expectations
     metadata_df = metadata_df.rename(columns={'image_id': 'id'})
 
-    # --- 6. 批量进行向量化 ---
+    # --- 6. Batch vectorization ---
     logging.info("Vectorizing all reasoning paths (coarse-grained)...")
     coarse_embeddings = embedding_handler.get_embeddings(all_reasoning_texts)
 
     logging.info("Vectorizing all chunks (fine-grained)...")
     fine_embeddings = embedding_handler.get_embeddings(all_chunk_texts)
 
-    # --- 7. 保存向量数据库和元数据 ---
+    # --- 7. Save vector database and metadata ---
     logging.info(f"Saving vector database to {DB_OUTPUT_DIR}...")
     db_data = {
         "metadata": metadata_df,

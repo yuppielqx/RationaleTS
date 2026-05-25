@@ -21,10 +21,10 @@ from utils import EmbeddingHandler
 
 warnings.filterwarnings("ignore")
 
-# --- 配置日志 ---
+# --- Logging configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', force=True)
 
-# --- 全局配置 ---
+# --- Global configuration ---
 ALL_LABEL_MEANINGS = {
     "finance_SP": {
         0: "decrease by more than 1%",
@@ -35,12 +35,12 @@ ALL_LABEL_MEANINGS = {
         0: "no heavy pollution: PM2.5 <75",
         1: "heavy pollution level: PM2.5 >=75"
     },
-    # --- 新增 power 数据集的标签含义 ---
+    # --- Power dataset label meanings ---
     "power": {
         0: "Avg. power will not be higher",
         1: "Avg. power will be higher"
     },
-    # --- 新增 traffic 数据集的标签含义 ---
+    # --- Traffic dataset label meanings ---
     "traffic": {
         0: "Occupancy decreases by >2",
         1: "Occupancy changes within [-2, 2]",
@@ -49,14 +49,14 @@ ALL_LABEL_MEANINGS = {
 }
 
 def evaluate_results(results_df: pd.DataFrame, LABEL_MEANINGS: dict):
-    # --- 预处理：将预测值为-1的样本改为1 ---
+    # --- Preprocessing: change predictions of -1 to 1 (neutral) ---
     invalid_predictions = results_df[results_df['prediction'] == -1]
     if not invalid_predictions.empty:
         logging.warning(
             f"Found {len(invalid_predictions)} samples with prediction value -1. Changing them to 1 (neutral).")
         results_df['prediction'] = results_df['prediction'].replace(-1, 1)
 
-    """计算并打印预测结果的性能指标。"""
+    """Compute and print performance metrics for prediction results."""
     y_true = results_df['true_label']
     y_pred = results_df['prediction']
     classes = sorted(y_true.unique())
@@ -68,18 +68,18 @@ def evaluate_results(results_df: pd.DataFrame, LABEL_MEANINGS: dict):
     logging.info(f"F1 Score (Micro): {f1_score(y_true, y_pred, average='micro'):.4f}")
     logging.info(f"F1 Score (Weighted): {f1_score(y_true, y_pred, average='weighted'):.4f}")
 
-    # --- 新增 AUROC 计算逻辑 ---
-    # 因为没有直接的概率输出，我们基于最终的离散预测来模拟概率（one-hot编码）
-    # 这是一种计算 AUROC 的方式，尽管不如使用真实概率分数精确
+    # --- AUROC calculation ---
+    # Since there are no direct probability outputs, we simulate probabilities from discrete predictions (one-hot encoding)
+    # This is a way to compute AUROC, though less precise than using real probability scores
     if num_classes > 1:
         y_true_binarized = label_binarize(y_true, classes=classes)
         y_pred_binarized = label_binarize(y_pred, classes=classes)
 
-        # 确保即使某些类别没有被预测，y_pred_binarized 也有正确的列数
+        # Ensure y_pred_binarized has the correct number of columns even if some classes are not predicted
         if y_pred_binarized.shape[1] != y_pred_binarized.shape[1]:
-            # 创建一个单位矩阵作为查找表
+            # Create an identity matrix as a lookup table
             eye_matrix = np.eye(num_classes)
-            # 使用整数索引来构建完整的one-hot编码矩阵
+            # Use integer indices to construct a complete one-hot encoding matrix
             y_pred_binarized = eye_matrix[y_pred.astype(int)]
 
         auroc_macro = roc_auc_score(y_true_binarized, y_pred_binarized, multi_class='ovr', average='macro')
@@ -93,7 +93,7 @@ def evaluate_results(results_df: pd.DataFrame, LABEL_MEANINGS: dict):
 
 def parse_json_from_string(text: str) -> dict:
     """
-    从可能包含额外文本的字符串中提取并解析JSON对象。
+    Extract and parse a JSON object from a string that may contain extra text.
     """
     match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', text, re.DOTALL)
     if match:
@@ -107,7 +107,7 @@ def parse_json_from_string(text: str) -> dict:
     return None
 
 def min_max_scale(scores):
-    """将分数归一化到 [0, 1] 区间，用于混合检索加权"""
+    """Normalize scores to [0, 1] range for hybrid retrieval weighting."""
     min_score = np.min(scores)
     max_score = np.max(scores)
     if max_score == min_score:
@@ -116,7 +116,7 @@ def min_max_scale(scores):
 
 def process_sample(image_id, all_labels, embedding_handler, analysis_agent, rag_prediction_agent, IMAGE_DIR, top_k, retrieval_mode='text', hybrid_alpha=0.5, all_data_values=None, train_data_embeddings=None, query_embedding_tabpfn=None):
     """
-    处理单个测试样本的完整RAG流程。
+    Process the complete RAG pipeline for a single test sample.
     """
     image_path = os.path.join(IMAGE_DIR, f"{image_id}.png")
     if not os.path.exists(image_path):
@@ -125,41 +125,41 @@ def process_sample(image_id, all_labels, embedding_handler, analysis_agent, rag_
 
     similar_examples = []
 
-    # --- 1. 准备查询向量 (根据模式) ---
+    # --- 1. Prepare query vectors (depending on mode) ---
     
-    # 文本查询 (Hybrid 或 Text 模式需要)
+    # Text query (required for Hybrid or Text mode)
     query_text = ""
     if retrieval_mode in ['text', 'hybrid', 'worst']:
         logging.info(f"Generating initial analysis for image_id: {image_id}")
-        query_text = analysis_agent.execute(image_path=image_path) # 忽略 usage 返回值
+        query_text = analysis_agent.execute(image_path=image_path)
 
-    # TabPFN 数值查询 (Hybrid 或 TabPFN 模式需要)
-    # 注意：query_embedding_tabpfn 现在由 main 函数预计算并传入，
-    # 确保它与 train_data_embeddings 处于同一个向量空间（经过了 Transformer 层）。
+    # TabPFN numerical query (required for Hybrid or TabPFN mode)
+    # Note: query_embedding_tabpfn is now pre-computed and passed in by the main function,
+    # ensuring it is in the same vector space as train_data_embeddings (after Transformer layers).
     pass
 
-    # --- 2. 执行检索 ---
+    # --- 2. Execute retrieval ---
     
     if retrieval_mode == 'hybrid':
-        # a. 计算 TabPFN 相似度
+        # a. Compute TabPFN similarity
         sims_tabpfn = cosine_similarity(query_embedding_tabpfn.reshape(1, -1), train_data_embeddings)[0]
-        # b. 计算 文本语义 相似度
+        # b. Compute text semantic similarity
         query_embedding_text = embedding_handler.get_embeddings([query_text])
         sims_text = cosine_similarity(query_embedding_text, embedding_handler.coarse_embeddings)[0]
-        # c. 加权融合
+        # c. Weighted fusion
         hybrid_scores = hybrid_alpha * min_max_scale(sims_tabpfn) + (1 - hybrid_alpha) * min_max_scale(sims_text)
-        # d. 排序取 Top-K
+        # d. Sort and take Top-K
         top_indices = np.argsort(hybrid_scores)[-top_k:][::-1]
         similar_examples = embedding_handler.rag_metadata.iloc[top_indices].to_dict('records')
     elif retrieval_mode == 'worst':
-        # a. 计算 TabPFN 相似度
+        # a. Compute TabPFN similarity
         sims_tabpfn = cosine_similarity(query_embedding_tabpfn.reshape(1, -1), train_data_embeddings)[0]
-        # b. 计算 文本语义 相似度
+        # b. Compute text semantic similarity
         query_embedding_text = embedding_handler.get_embeddings([query_text])
         sims_text = cosine_similarity(query_embedding_text, embedding_handler.coarse_embeddings)[0]
-        # c. 加权融合
+        # c. Weighted fusion
         hybrid_scores = hybrid_alpha * min_max_scale(sims_tabpfn) + (1 - hybrid_alpha) * min_max_scale(sims_text)
-        # d. 排序取 Top-K
+        # d. Sort and take Top-K
         top_indices = np.argsort(hybrid_scores)[:top_k][::-1]
         similar_examples = embedding_handler.rag_metadata.iloc[top_indices].to_dict('records')
     elif retrieval_mode == 'tabpfn':
@@ -170,7 +170,7 @@ def process_sample(image_id, all_labels, embedding_handler, analysis_agent, rag_
         similar_examples = embedding_handler.find_similar_reasoning_paths(query_text, top_k=top_k)
 
 
-    # c. 执行增强预测
+    # c. Execute RAG-enhanced prediction
     logging.info("Executing RAG-enhanced prediction...")
     rag_response_str = rag_prediction_agent.execute(
         image_path=image_path,
@@ -180,7 +180,7 @@ def process_sample(image_id, all_labels, embedding_handler, analysis_agent, rag_
     if not rag_result:
         rag_result = {"prediction": 1, "reasoning": "RAG prediction failed."}
 
-    # d. 记录结果
+    # d. Record results
     true_label = all_labels[image_id]
     rag_result['id'] = image_id
     rag_result['true_label'] = int(true_label)
@@ -192,14 +192,14 @@ def process_sample(image_id, all_labels, embedding_handler, analysis_agent, rag_
 
 def main(args):
     """
-    主函数，对测试集执行RAG增强的金融预测。
+    Main function to execute RAG-enhanced predictions on the test set.
     """
-    # --- 0. 根据参数动态设置配置 ---
+    # --- 0. Configure settings dynamically from arguments ---
     DATASET_NAME = args.dataset_name
     DATA_PATH = f"dataset/{DATASET_NAME}/data.pkl"
     IMAGE_DIR = f"dataset/{DATASET_NAME}/images"
     LABELS_PATH = f"dataset/{DATASET_NAME}/labels.pkl"
-    # 确定使用什么样式的向量数据库路径（根据 build_vector_db.py 的输出）
+    # Determine the vector DB path style (based on build_vector_db.py output)
     DB_PATH = f"vector_db/{DATASET_NAME}/vector_db.pkl"
     RESULTS_DIR = f"rag_results/{DATASET_NAME}"
     TRAIN_EMB_PATH = f"dataset/{DATASET_NAME}/train_embeddings.pkl"
@@ -210,10 +210,10 @@ def main(args):
         logging.error(f"Dataset '{DATASET_NAME}' is not configured in ALL_LABEL_MEANINGS.")
         return
 
-    # --- 1. 创建输出目录 ---
+    # --- 1. Create output directory ---
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    # --- 2. 加载数据和划分测试集 ---
+    # --- 2. Load data and split into test set ---
     logging.info("Loading data and splitting into test set...")
     with open(LABELS_PATH, 'rb') as f:
         all_labels = pickle.load(f)
@@ -222,7 +222,7 @@ def main(args):
     test_indices = range(train_size, len(all_labels), 1)
     logging.info(f"Total samples: {len(all_labels)}, Test samples: {len(test_indices)}")
 
-    # --- 3. 加载向量数据库和初始化处理器 ---
+    # --- 3. Load vector database and initialize handlers ---
     logging.info(f"Loading vector database from {DB_PATH}...")
     if not os.path.exists(DB_PATH):
         logging.error("Vector database not found. Please run 'build_vector_db.py' first.")
@@ -231,14 +231,14 @@ def main(args):
     embedding_handler = EmbeddingHandler(model_name=args.embedding_model)
     embedding_handler.load_vector_db(DB_PATH)
 
-    # --- 3.5 准备 TabPFN 检索资源 (如果需要) ---
+    # --- 3.5 Prepare TabPFN retrieval resources (if needed) ---
     tabpfn_classifier = None
     all_data_values = None
     train_data_embeddings = None
     test_data_embeddings = None
 
     if args.retrieval_mode in ['tabpfn', 'hybrid', 'worst']:
-        # 检查是否已经存在预计算的 Embedding
+        # Check if pre-computed embeddings already exist
         if os.path.exists(TRAIN_EMB_PATH) and os.path.exists(TEST_EMB_PATH):
             logging.info(f"Loading pre-computed TabPFN embeddings from {TRAIN_EMB_PATH} and {TEST_EMB_PATH}...")
             with open(TRAIN_EMB_PATH, 'rb') as f:
@@ -253,10 +253,10 @@ def main(args):
             huggingface_hub.login(token=os.getenv("HF_TOKEN"))
 
             logging.info("Initializing TabPFN for embedding generation...")
-            # device='cpu' 确保兼容性，N_ensemble_configurations=4 提高速度
+            # device='cpu' for compatibility, N_ensemble_configurations=4 for speed
             tabpfn_classifier = TabPFNClassifier(device='cpu')
             
-            # 加载原始数据 (用于获取测试样本的原始值)
+            # Load raw data (for obtaining original values of test samples)
             if os.path.exists(DATA_PATH):
                 with open(DATA_PATH, 'rb') as f:
                     all_data_values = pickle.load(f)
@@ -290,7 +290,7 @@ def main(args):
                 else:
                     X_test_flat = X_test
                 
-                # 使用训练集作为 Context 来生成测试集的 Embedding
+                # Use training set as context to generate test set embeddings
                 test_embs_layers = embedder.get_embeddings(X_train_flat, y_train, X_test_flat, data_source='test')
                 test_data_embeddings = test_embs_layers[-1]
                 # test_data_embeddings = np.nan_to_num(test_data_embeddings, nan=0.0, posinf=0.0, neginf=0.0)
@@ -306,14 +306,14 @@ def main(args):
                 logging.error(f"Data file {DATA_PATH} not found. Cannot perform TabPFN retrieval.")
                 return
 
-    # --- 4. 初始化Agents ---
+    # --- 4. Initialize agents ---
     analysis_agent = AnalysisAgent(model_name=args.analysis_model, dataset_name=DATASET_NAME, image_url_format='dict')
     rag_prediction_agent = RAGPredictionAgent(model_name=args.prediction_model, dataset_name=DATASET_NAME, image_url_format='dict')
 
-    # --- 5. 并行处理测试数据，执行RAG预测 ---
+    # --- 5. Process test data in parallel, execute RAG predictions ---
     final_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as executor:
-        # 为每个 image_id 提交一个任务
+        # Submit a task for each image_id
         future_to_id = {
             executor.submit(
                 process_sample,
@@ -341,13 +341,13 @@ def main(args):
                 image_id = future_to_id[future]
                 logging.error(f"Image ID {image_id} generated an exception: {exc}")
 
-    # --- 6. 保存最终预测结果 ---
+    # --- 6. Save final prediction results ---
     results_df = pd.DataFrame(final_results)
     output_path = os.path.join(RESULTS_DIR, args.output_file)
     results_df.to_csv(output_path, index=False)
     logging.info(f"RAG prediction results saved to {output_path}")
 
-    # --- 7. 计算并打印性能指标 ---
+    # --- 7. Compute and print performance metrics ---
     results_df = pd.read_csv(output_path)
 
     evaluate_results(results_df, LABEL_MEANINGS)

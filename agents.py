@@ -21,11 +21,11 @@ class BaseAgent(ABC):
             return all_prompts.get(self.dataset_name, {})
 
     def _create_image_content(self, image_b64_string: str) -> Dict[str, Any]:
-        """根据指定的格式创建图片内容部分。"""
+        """Create image content part in the specified format."""
         image_url_content = f"data:image/jpeg;base64,{image_b64_string}"
         if self.image_url_format == 'dict':
             return {"type": "image_url", "image_url": {"url": image_url_content}}
-        # 默认为 'string' 格式
+        # Default to 'string' format
         return {"type": "image_url", "image_url": image_url_content}
 
     @abstractmethod
@@ -56,24 +56,24 @@ class PredictionAgent(BaseAgent):
 
 
 class EvaluatorAgent(BaseAgent):
-    """
-    金融评估代理。
-    根据真实标签，评估预测的准确性，并提供一个“黄金标准”的推理过程。
-    """
+    “””
+    Evaluation agent.
+    Evaluates prediction accuracy against the true label and produces a gold-standard reasoning path.
+    “””
     def execute(self, true_label: int, true_label_meaning: str, llm_prediction: int, reasoning: str, image_path: str, **kwargs) -> str:
-        """
-        构建评估prompt并调用VLM。
+        “””
+        Build the evaluation prompt and call the VLM.
 
         Args:
-            true_label (int): 真实的S&P 500变动标签 (0, 1, 2)。
-            true_label_meaning (str): 真实标签的文本含义。
-            llm_prediction (int): VLM预测的标签。
-            reasoning (str): VLM的初步推理过程。
-            image_path (str): 图表的路径。
+            true_label (int): True label (0, 1, 2).
+            true_label_meaning (str): Textual meaning of the true label.
+            llm_prediction (int): Label predicted by the VLM.
+            reasoning (str): Initial reasoning from the VLM.
+            image_path (str): Path to the chart image.
 
         Returns:
-            str: VLM返回的评估和优化推理。
-        """
+            str: Evaluated and refined reasoning from the VLM.
+        “””
         try:
             prompt_config = self.prompts['evaluator_agent']
         except KeyError:
@@ -96,18 +96,18 @@ class EvaluatorAgent(BaseAgent):
 
 class AnalysisAgent(BaseAgent):
     """
-    分析代理。
-    对新的图表进行初步分析，生成简短的文本摘要，用于后续的检索查询。
+    Analysis agent.
+    Performs preliminary analysis on a new chart, generating a short text summary for subsequent retrieval queries.
     """
     def execute(self, image_path: str, **kwargs) -> str:
         """
-        构建分析prompt并调用VLM。
+        Build the analysis prompt and call the VLM.
 
         Args:
-            image_path (str): 图表的路径。
+            image_path (str): Path to the chart image.
 
         Returns:
-            str: VLM返回的简短分析文本。
+            str: Short analysis text from the VLM.
         """
         try:
             prompt_config = self.prompts['analysis_agent']
@@ -129,18 +129,18 @@ class AnalysisAgent(BaseAgent):
 
 class RAGPredictionAgent(BaseAgent):
     """
-    基于检索增强生成的金融预测代理。
+    RAG-based prediction agent.
     """
     def execute(self, image_path: str, examples: List[Dict], **kwargs) -> str:
         """
-        构建包含相似案例的prompt并调用VLM进行最终预测。
+        Build a prompt containing similar examples and call the VLM for final prediction.
 
         Args:
-            image_path (str): 测试图表的路径。
-            examples (List[Dict]): 检索到的相似案例列表。
+            image_path (str): Path to the test chart image.
+            examples (List[Dict]): List of retrieved similar examples.
 
         Returns:
-            str: VLM返回的包含预测和推理的JSON字符串。
+            str: JSON string from the VLM containing prediction and reasoning.
         """
         try:
             prompt_config = self.prompts['rag_prediction_agent']
@@ -251,10 +251,10 @@ class ImageFewShotPredictionAgent(BaseAgent):
         user_prompt_example_template = prompt_config['user_prompt_example_template']
         user_prompt_task = prompt_config['user_prompt_task']
 
-        # --- 构建多模态消息内容 ---
+        # --- Build multimodal message content ---
         user_content = [{"type": "text", "text": user_prompt_intro}]
 
-        # 添加 few-shot 样本 (文本后跟图片)
+        # Add few-shot examples (text followed by images)
         for i, ex in enumerate(examples):
             example_text = user_prompt_example_template.format(i=i + 1, label_meaning=ex['label_meaning'])
             user_content.append({"type": "text", "text": example_text})
@@ -262,7 +262,7 @@ class ImageFewShotPredictionAgent(BaseAgent):
             if image_b64:
                 user_content.append(self._create_image_content(image_b64))
 
-        # 添加最终任务提示和测试图片
+        # Add final task prompt and test image
         user_content.append({"type": "text", "text": user_prompt_task})
         test_image_b64 = encode_image_to_base64(test_image_path)
         user_content.append(self._create_image_content(test_image_b64))

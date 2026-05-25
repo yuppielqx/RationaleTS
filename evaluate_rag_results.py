@@ -7,10 +7,10 @@ import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score, classification_report, accuracy_score
 from sklearn.preprocessing import label_binarize
 
-# --- 配置日志 ---
+# --- Logging configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- 全局配置 ---
+# --- Global configuration ---
 ALL_LABEL_MEANINGS = {
     "finance_SP": {
         0: "decrease by more than 1%",
@@ -21,12 +21,12 @@ ALL_LABEL_MEANINGS = {
         0: "no heavy pollution: PM2.5 <75",
         1: "heavy pollution level: PM2.5 >=75"
     },
-    # --- 新增 power 数据集的标签含义 ---
+    # --- Power dataset label meanings ---
     "power": {
         0: "Avg. power will not be higher",
         1: "Avg. power will be higher"
     },
-    # --- 新增 traffic 数据集的标签含义 ---
+    # --- Traffic dataset label meanings ---
     "traffic": {
         0: "Occupancy decreases by >2",
         1: "Occupancy changes within [-2, 2]",
@@ -36,10 +36,10 @@ ALL_LABEL_MEANINGS = {
 
 def evaluate_predictions(args):
     """
-    读取CSV文件，处理无效预测，并计算性能指标。
+    Read CSV file, handle invalid predictions, and compute performance metrics.
 
     Args:
-        csv_path (str): 预测结果CSV文件的路径。
+        csv_path (str): Path to the prediction results CSV file.
     """
     dataset_name = args.dataset_name
 
@@ -51,7 +51,7 @@ def evaluate_predictions(args):
     logging.info(f"Loading prediction results from {csv_path}...")
     results_df = pd.read_csv(csv_path)
 
-    # --- 预处理：将预测值为-1的样本改为1 ---
+    # --- Preprocessing: change predictions of -1 to 1 (neutral) ---
     invalid_predictions = results_df[results_df['prediction'] == -1]
     if not invalid_predictions.empty:
         logging.warning(f"Found {len(invalid_predictions)} samples with prediction value -1. Changing them to 1 (neutral).")
@@ -69,17 +69,17 @@ def evaluate_predictions(args):
     logging.info(f"F1 Score (Micro): {f1_score(y_true, y_pred, average='micro', zero_division=0):.4f}")
     logging.info(f"F1 Score (Weighted): {f1_score(y_true, y_pred, average='weighted', zero_division=0):.4f}")
 
-    # --- AUROC 计算逻辑 ---
-    # 基于最终的离散预测来模拟概率（one-hot编码）
+    # --- AUROC calculation ---
+    # Simulate probabilities from discrete predictions (one-hot encoding)
     if num_classes > 1:
         y_true_binarized = label_binarize(y_true, classes=classes)
         y_pred_binarized = label_binarize(y_pred, classes=classes)
 
-        # 确保即使某些类别没有被预测，y_pred_binarized 也有正确的列数
+        # Ensure y_pred_binarized has the correct number of columns even if some classes are not predicted
         if y_pred_binarized.shape[1] !=  y_pred_binarized.shape[1]:
-            # 创建一个单位矩阵作为查找表
+            # Create an identity matrix as a lookup table
             eye_matrix = np.eye(num_classes)
-            # 使用整数索引来构建完整的one-hot编码矩阵
+            # Use integer indices to construct a complete one-hot encoding matrix
             y_pred_binarized = eye_matrix[y_pred.astype(int)]
 
         auroc_macro = roc_auc_score(y_true_binarized, y_pred_binarized, multi_class='ovr', average='macro')

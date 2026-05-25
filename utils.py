@@ -46,7 +46,7 @@ def encode_image_to_base64(image_path):
         return None
 
 def evaluate_results(results_df: pd.DataFrame, LABEL_MEANINGS: dict):
-    """计算并打印预测结果的性能指标。"""
+    """Compute and print performance metrics for prediction results."""
     y_true = results_df['true_label']
     y_pred = results_df['prediction']
     classes = sorted(y_true.unique())
@@ -58,14 +58,14 @@ def evaluate_results(results_df: pd.DataFrame, LABEL_MEANINGS: dict):
     logging.info(f"F1 Score (Micro): {f1_score(y_true, y_pred, average='micro'):.4f}")
     logging.info(f"F1 Score (Weighted): {f1_score(y_true, y_pred, average='weighted'):.4f}")
 
-    # --- 新增 AUROC 计算逻辑 ---
-    # 因为没有直接的概率输出，我们基于最终的离散预测来模拟概率（one-hot编码）
-    # 这是一种计算 AUROC 的方式，尽管不如使用真实概率分数精确
+    # --- AUROC calculation ---
+    # Since there are no direct probability outputs, we simulate probabilities from discrete predictions (one-hot encoding)
+    # This is a way to compute AUROC, though less precise than using real probability scores
     if num_classes > 1:
         y_true_binarized = label_binarize(y_true, classes=classes)
         y_pred_binarized = label_binarize(y_pred, classes=classes)
 
-        # 确保即使某些类别没有被预测，y_pred_binarized 也有正确的列数
+        # Ensure y_pred_binarized has the correct number of columns even if some classes are not predicted
         if y_pred_binarized.shape[1] != num_classes:
             y_pred_binarized = np.eye(num_classes)[y_pred.astype(int)]
 
@@ -90,8 +90,8 @@ def call_qwen_api(messages, model_name, max_tokens=2048):
             model=model_name,
             messages=messages
         )
-        # print("输入的tokens数量为: ", response.usage.prompt_tokens)
-        # print("输出的tokens数量为: ", response.usage.completion_tokens)
+        # print("Input token count: ", response.usage.prompt_tokens)
+        # print("Output token count: ", response.usage.completion_tokens)
         return response.choices[0].message.content
     except Exception as e:
         return f"Error during API call: {e}"
@@ -99,7 +99,7 @@ def call_qwen_api(messages, model_name, max_tokens=2048):
 
 class EmbeddingHandler:
     """
-    使用 OpenAI 兼容的 API 处理文本编码和相似度计算。
+    Handle text encoding and similarity computation using an OpenAI-compatible API.
     """
     def __init__(self, model_name: str):
         self.model_name = model_name
@@ -114,7 +114,7 @@ class EmbeddingHandler:
         self.all_chunk_texts = None
 
     def _get_embeddings_from_api(self, texts: List[str]) -> np.ndarray:
-        """通过调用 API 为一批文本生成嵌入向量。"""
+        """Generate embeddings for a batch of texts by calling the API."""
         try:
             response = client1.embeddings.create(
                 input=texts,
@@ -129,14 +129,14 @@ class EmbeddingHandler:
 
     def get_embeddings(self, texts: List[str], batch_size: int = 512) -> np.ndarray:
         """
-        为文本列表生成嵌入向量，支持自动批处理以避免API长度限制。
+        Generate embeddings for a list of texts, with automatic batching to avoid API length limits.
 
         Args:
-            texts (List[str]): 需要向量化的文本列表。
-            batch_size (int): 每个API调用的批次大小。
+            texts (List[str]): List of texts to vectorize.
+            batch_size (int): Batch size per API call.
 
         Returns:
-            np.ndarray: 包含所有文本嵌入向量的numpy数组。
+            np.ndarray: Numpy array containing all text embeddings.
         """
         all_embeddings = []
         for i in tqdm(range(0, len(texts), batch_size), desc="Generating Embeddings"):
@@ -159,7 +159,7 @@ class EmbeddingHandler:
         train_texts = [texts[idx] for idx in self.train_df['index']]
         self.train_embeddings = self._get_embeddings(train_texts)
 
-        # 预计算第一轮推理文本的嵌入
+        # Pre-compute embeddings for round-1 reasoning texts
         round_1_df = pd.read_csv(round_1_results_path).set_index('id')
         train_reasonings = [round_1_df.loc[idx]['llm_reasoning'] if idx in round_1_df.index else "" for idx in self.train_df['index']]
         self.reasoning_embeddings = self._get_embeddings(train_reasonings)
@@ -167,7 +167,7 @@ class EmbeddingHandler:
         logging.info("Training set text embeddings created.")
 
     def load_vector_db(self, db_path: str):
-        """加载预先构建的向量数据库。"""
+        """Load a pre-built vector database."""
         logging.info(f"Loading vector DB from {db_path}")
         with open(db_path, "rb") as f:
             db_data = pickle.load(f)
@@ -180,96 +180,97 @@ class EmbeddingHandler:
 
     def find_similar_reasoning_paths(self, query_text: str, top_k: int = 5, coarse_k: int = 20) -> List[Dict]:
         """
-        执行两阶段检索来查找最相关的推理路径。
-        
+        Perform two-stage retrieval to find the most relevant reasoning paths.
+
         Args:
-            query_text (str): 用户的查询或初步分析文本。
-            top_k (int): 最终返回的最相关示例数量。
-            coarse_k (int): 粗筛阶段返回的候选数量。
+            query_text (str): User query or preliminary analysis text.
+            top_k (int): Number of most relevant examples to return.
+            coarse_k (int): Number of candidates to return in the coarse stage.
 
         Returns:
-            List[Dict]: 包含最相关示例的列表，每个示例是一个字典。
+            List[Dict]: List of the most relevant examples, each as a dictionary.
         """
         if self.coarse_embeddings is None or self.fine_embeddings is None:
             raise ValueError("Vector database must be loaded first using 'load_vector_db'.")
 
         query_embedding = self.get_embeddings([query_text])
 
-        # --- 1. 粗筛阶段 ---
+        # --- 1. Coarse screening stage ---
         coarse_similarities = cosine_similarity(query_embedding, self.coarse_embeddings)[0]
-        # 获取前 coarse_k 个最相似的文档的索引
+        # Get indices of the top coarse_k most similar documents
         coarse_candidate_indices = np.argsort(coarse_similarities)[-coarse_k:][::-1]
 
-        # --- 2. 精排阶段 ---
+        # --- 2. Fine-grained re-ranking stage ---
         rerank_scores = []
         for doc_id in coarse_candidate_indices:
-            # 找到属于这个文档的所有 fine-grained chunks
+            # Find all fine-grained chunks belonging to this document
             chunk_indices = [i for i, map_id in enumerate(self.chunk_to_doc_id_map) if map_id == doc_id]
             if not chunk_indices:
                 continue
             
             candidate_fine_embeddings = self.fine_embeddings[chunk_indices]
             
-            # 计算查询与该文档所有chunks的相似度，并取最大值
+            # Compute similarity between query and all chunks of this document, take the max
             fine_similarities = cosine_similarity(query_embedding, candidate_fine_embeddings)[0]
             max_similarity = np.max(fine_similarities)
             rerank_scores.append((max_similarity, doc_id))
 
-        # 根据精排分数（最大块相似度）对候选进行排序
+        # Sort candidates by re-ranking score (max chunk similarity)
         rerank_scores.sort(key=lambda x: x[0], reverse=True)
         
-        # --- 3. 格式化并返回最终结果 ---
+        # --- 3. Format and return final results ---
         top_doc_ids = [doc_id for _, doc_id in rerank_scores[:top_k]]
         
         return self.rag_metadata.iloc[top_doc_ids].to_dict('records')
 
     def find_diverse_reasoning_paths(self, query_text: str, top_n_per_class: int = 2) -> List[Dict]:
-        """
-        执行“先分组，后检索”的分层检索策略，为每个标签类别找到最相关的推理路径。
+        “””
+        Perform a stratified “group-then-retrieve” strategy, finding the most relevant
+        reasoning paths for each label class.
 
         Args:
-            query_text (str): 用户的查询或初步分析文本。
-            top_n_per_class (int): 每个类别要选择的顶部样本数量。
+            query_text (str): User query or preliminary analysis text.
+            top_n_per_class (int): Number of top samples to select per class.
 
         Returns:
-            List[Dict]: 包含多样化示例的列表。
-        """
+            List[Dict]: List of diverse examples.
+        “””
         if self.coarse_embeddings is None:
             raise ValueError("Vector database must be loaded first using 'load_vector_db'.")
 
-        # 1. 获取查询向量
+        # 1. Get query embedding
         query_embedding = self.get_embeddings([query_text])
 
-        # 2. 按标签分组，在每个组内独立进行检索
+        # 2. Group by label and retrieve independently within each group
         selected_examples = []
-        # 获取数据集中存在的所有唯一标签
+        # Get all unique labels present in the dataset
         unique_labels = sorted(self.rag_metadata['true_label'].unique())
         for label_id in unique_labels:
             
-            # a. 找到属于当前标签的所有文档的索引
+            # a. Find indices of all documents belonging to the current label
             group_indices = self.rag_metadata[self.rag_metadata['true_label'] == label_id].index.tolist()
             if not group_indices:
                 continue
             
-            # b. 提取该组的嵌入向量
+            # b. Extract embeddings for this group
             group_embeddings = self.coarse_embeddings[group_indices]
             
-            # c. 在该组内计算相似度
+            # c. Compute similarity within this group
             group_similarities = cosine_similarity(query_embedding, group_embeddings)[0]
             
-            # d. 找到该组内最相似的 top_n_per_class 个样本的索引 (相对于group_indices)
+            # d. Find indices of the top_n_per_class most similar samples within this group (relative to group_indices)
             top_indices_in_group = np.argsort(group_similarities)[-top_n_per_class:][::-1]
             
-            # e. 获取这些样本在原始metadata中的真实索引
+            # e. Get the actual indices of these samples in the original metadata
             top_original_indices = [group_indices[i] for i in top_indices_in_group]
             
-            # f. 获取并保存这些样本
+            # f. Retrieve and save these samples
             best_in_group = self.rag_metadata.iloc[top_original_indices].copy()
             best_in_group['similarity'] = group_similarities[top_indices_in_group]
             selected_examples.extend(best_in_group.to_dict('records'))
 
-        # 3. 按总体相似度对所有选出的样本进行最终排序
-        # 使用dict来去重，因为DataFrame的drop_duplicates可能不保留我们想要的第一个实例
+        # 3. Sort all selected samples by overall similarity
+        # Use dict for deduplication, since DataFrame.drop_duplicates may not preserve the first instance
         unique_examples_dict = {ex['id']: ex for ex in selected_examples}
         final_list = sorted(unique_examples_dict.values(), key=lambda x: x['similarity'], reverse=True)
 
