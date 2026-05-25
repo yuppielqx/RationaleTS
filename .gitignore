@@ -50,6 +50,9 @@ rag_results/
 # --- Vector DB ---
 vector_db/
 
+# Claude
+.claude/
+
 # Environment
 .env
 .env.local
