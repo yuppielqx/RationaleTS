@@ -359,11 +359,11 @@ if __name__ == "__main__":
         help='Name of the dataset to process.'
     )
     parser.add_argument(
-        '--analysis_model', type=str, default='gemini-2.0-flash',
+        '--analysis_model', type=str, default='gpt-4o-mini',
         help='Name of the VLM for the AnalysisAgent.'
     )
     parser.add_argument(
-        '--prediction_model', type=str, default='gemini-2.0-flash',
+        '--prediction_model', type=str, default='gpt-4o-mini',
         help='Name of the VLM for the RAGPredictionAgent.'
     )
     parser.add_argument(

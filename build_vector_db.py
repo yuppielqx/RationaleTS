@@ -175,7 +175,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--evaluator_model',
         type=str,
-        default='gpt-4o',
+        default='gpt-5',
         help='Name of the VLM to use for generating reasoning paths.'
     )
     parser.add_argument(
